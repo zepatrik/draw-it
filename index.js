@@ -3,18 +3,11 @@ const e = require('express')
 const path = require('path')
 const cookieParser = require('cookie-parser')
 const fs = require('fs')
+const fetch = require('node-fetch')
 
 const app = e()
 const cookieName = 'username'
 const numFakeUsers = 1
-
-const words = [{
-  w: 'Giraffe',
-  c: 'Tier'
-}, {
-  w: 'Fahrrad',
-  c: 'Fahrzeug'
-}]
 
 const state = {
   users: [],
@@ -34,16 +27,33 @@ const startGame = () => {
     state.fakeUsers = [...state.fakeUsers, ...fakeUser]
   }
 
-  const w = words[Math.floor(Math.random() * words.length)]
-  state.word = w.w
-  state.category = w.c
+  const categories = [
+    [2, 'Essen'],
+    [3, 'Tiere'],
+    [5, 'Menschlicher Körper'],
+    [6, 'Bildung'],
+    [7, 'Familie'],
+    [8, 'Geometrische Figuren'],
+    [9, 'Medien'],
+    [12, 'Berufe'],
+    [13, 'Transport'],
+  ]
+  const c = categories[Math.floor(Math.random() * categories.length)]
+  state.category = c[1]
+
+  return fetch(`https://www.palabrasaleatorias.com/zufallige-worter.php?fs=1&fs2=${c[0]}&Submit=Neues+Wort`)
+    .then(res => res.text())
+    .then(body => {
+      console.log(body)
+      state.word = body.match(/<div style="font-size:3em; color:#6200C5;">\r\n(.+)<\/div>/)[1]
+    })
 }
 
 app.use(e.urlencoded({ extended: true }))
 
 app.use(cookieParser())
 
-// app.use((req, res, next) => {console.log(state); return next()})
+app.use((req, res, next) => {console.log(state); return next()})
 
 app.get('/', (req, res) => {
   res.sendFile(fileName('index.html'))
@@ -76,10 +86,7 @@ app.post('/ready', (req, res) => {
     state.readyUsers = [...state.readyUsers, userName]
   }
   if (state.users.length === state.readyUsers.length) {
-    if (state.word === '') {
-      startGame()
-    }
-    fs.readFile(state.fakeUsers.includes(userName) ? fileName('fake.html') : fileName('player.html'), (err, data) => {
+    const respond = () => fs.readFile(state.fakeUsers.includes(userName) ? fileName('fake.html') : fileName('player.html'), (err, data) => {
       if (err) {
         res.status(500)
         res.send('Internal server error: ' + err)
@@ -90,6 +97,14 @@ app.post('/ready', (req, res) => {
       data = data.replace('{{ category }}', state.category)
       res.send(data)
     })
+    if (state.word === '') {
+      startGame().then(respond).catch(reason => {
+        res.status(500)
+        res.send('Internal server error: ' + reason)
+      })
+    } else {
+      respond()
+    }
     return
   }
 
